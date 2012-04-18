@@ -11,14 +11,21 @@ class NetworkAggregate {
 
 	private $db;
 	private $blog_ids;
+	private $last_blog_id = BLOG_ID_CURRENT_SITE;
 	
 	public function __construct() {
 		global $wpdb;
 		$this->db = $wpdb;
 	}
+
+	public function hookDebug( $name ) {
+		echo "<!-- HOOK {$name} -->\n";
+	}
 	
 	public function onInit() {
 		add_filter( 'posts_request', array( $this, 'filterQuery' ) );
+		//add_action( 'all', array( $this, 'hookDebug' ) );
+		//add_filter( 'all', array( $this, 'hookDebug' ) );
 	}
 
 	private function loadBlogIds() {
@@ -38,13 +45,25 @@ class NetworkAggregate {
 		return $query;
 	}
 
+	public function onThePost( $post ) {
+		if ( $post->blog_id != $this->last_blog_id ) {
+			restore_current_blog(); //reset to center so we remember for loop_end
+			$ths->last_blog_id = $post->blog_id;
+			switch_to_blog( $post->blog_id );
+		}
+	}
+
+	public function onLoopEnd( $query ) {
+		restore_current_blog();
+	}
+	
 	private function parseQuery( $query ) {
 		file_put_contents('/tmp/request.txt', print_r($query, true));
 		if( preg_match( '/(SELECT SQL_CALC_FOUND_ROWS)(.*?)(ORDER.*?)$/', $query, $matches ) ) {
 
 			$post_table = $this->db->posts;
 			$query = array();
-			$query[BLOG_ID_CURRENT_SITE] = $matches[1] . $matches[2];
+			$query[BLOG_ID_CURRENT_SITE] = $matches[1] . ' ' . BLOG_ID_CURRENT_SITE . ' as blog_id, ' . $matches[2];
 			$prefix_len = strlen( $this->db->prefix );
 			$posts_suffix = substr( $post_table, $prefix_len );
 			$order = str_replace( $post_table . '.', '', $matches[3] );
@@ -52,9 +71,11 @@ class NetworkAggregate {
 			foreach ( $this->blog_ids as $blog_id ) {
 				if ( $blog_id != BLOG_ID_CURRENT_SITE ) {
 					$blog_post_table = $this->db->prefix . $blog_id . '_' . $posts_suffix;
-					$query[$blog_id] = 'SELECT ' . str_replace( $post_table, $blog_post_table, $matches[2] );
+					$query[$blog_id] = "SELECT {$blog_id} as blog_id, " . str_replace( $post_table, $blog_post_table, $matches[2] );
 				}
 			}
+			add_action( 'the_post', array( $this, 'onThePost' ) );
+			add_action( 'loop_end', array( $this, 'onLoopEnd' ) );
 			return implode(' UNION ', $query) . $order;
 		}
 		return $query;
