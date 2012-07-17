@@ -47,12 +47,6 @@ class NetworkAggregate {
 		$this->db = $wpdb;
 	}
 
-	public function hookDebug( $name ) {
-		$args = func_get_args();
-		//echo "<!-- HOOK: ".print_r($args,1)." -->\n";
-		file_put_contents('/tmp/hooks', print_r($args, 1), FILE_APPEND);
-	}
-
 	public function hook() {
 		add_filter('posts_request', array($this, 'filterQuery'));
 		add_action( 'the_post', array( $this, 'onThePost' ) );
@@ -77,7 +71,7 @@ class NetworkAggregate {
 	public function onThePost( $post ) {
 		if ( $post->blog_id != $this->last_blog_id ) {
 			restore_current_blog(); //reset to center so we remember for loop_end
-			$ths->last_blog_id = $post->blog_id;
+			$this->last_blog_id = $post->blog_id;
 			switch_to_blog( $post->blog_id );
 		}
 	}
@@ -102,7 +96,6 @@ class NetworkAggregate {
 					$query[$blog_id] = "SELECT {$blog_id} as blog_id, " . str_replace( $post_table, $blog_post_table, $matches[2] );
 				}
 			}
-			var_dump(implode(' UNION ', $query).$order); 
 			return implode(' UNION ', $query) . $order;
 		}
 		return $query;
