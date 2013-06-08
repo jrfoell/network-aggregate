@@ -48,7 +48,7 @@ class NetworkAggregate {
 	public function onThePost( $post ) {
 		if ( $post->blog_id != $this->last_blog_id ) {
 			restore_current_blog(); //reset to center so we remember for loop_end
-			$ths->last_blog_id = $post->blog_id;
+			$this->last_blog_id = $post->blog_id;
 			switch_to_blog( $post->blog_id );
 		}
 	}
