@@ -11,7 +11,6 @@ class NetworkAggregate {
 
 	private $db;
 	private $blog_ids;
-	private $last_blog_id = BLOG_ID_CURRENT_SITE;
 	
 	public function __construct() {
 		global $wpdb;
@@ -46,11 +45,8 @@ class NetworkAggregate {
 	}
 
 	public function onThePost( $post ) {
-		if ( $post->blog_id != $this->last_blog_id ) {
-			restore_current_blog(); //reset to center so we remember for loop_end
-			$ths->last_blog_id = $post->blog_id;
-			switch_to_blog( $post->blog_id );
-		}
+		restore_current_blog(); //reset to center so we remember for loop_end
+		switch_to_blog( $post->blog_id );
 	}
 
 	public function onLoopEnd( $query ) {
