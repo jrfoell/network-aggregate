@@ -1,15 +1,29 @@
-<?php
+<?php // phpcs:ignore WordPress.Files.FileName.InvalidClassFileName -- plugin file.
 /**
  * Plugin Name: Network Aggregate
  * Description: Changes home page to pull content from all sites
  * Author: Justin Foell
- * Version: 1.1
+ * Version: 1.2
  * Author URI: http://www.foell.org/justin
  */
 
+/**
+ * Plugin class.
+ */
 class NetworkAggregate {
 
+	/**
+	 * Member var for WPDB.
+	 *
+	 * @var wpdb
+	 */
 	private $db;
+
+	/**
+	 * Blog IDs for this multi-site installation.
+	 *
+	 * @var array
+	 */
 	private $blog_ids;
 
 	/**
@@ -36,33 +50,54 @@ class NetworkAggregate {
 		$this->db = $wpdb;
 	}
 
+	/**
+	 * Hook for debugging.
+	 *
+	 * @param string $name Hook name.
+	 */
 	public function hook_debug( $name ) {
 		echo "<!-- HOOK {$name} -->\n";
 	}
 
+	/**
+	 * Initialize this class by adding necessary hooks.
+	 */
 	public function init() {
 		add_filter( 'posts_request', array( $this, 'filter_query' ) );
-		//add_action( 'all', array( $this, 'hook_debug' ) );
-		//add_filter( 'all', array( $this, 'hook_debug' ) );
+		// add_action( 'all', array( $this, 'hook_debug' ) );
 	}
 
+	/**
+	 * Load the blog IDs for this multi-site instance.
+	 */
 	private function load_blog_ids() {
 		$this->blog_ids = $this->db->get_col( "SELECT blog_id FROM {$this->db->blogs}" );
 	}
 
-	public function filter_query( $query ) {
-		$dummy_query = new WP_Query();  // the query isn't run if we don't pass any query vars
-		$dummy_query->parse_query( $query );
+	/**
+	 * Filter the main SQL query to do something different.
+	 *
+	 * @param string $sql_query Main SQL query for "The Loop".
+	 * @return string Altered main SQL query.
+	 */
+	public function filter_query( $sql_query ) {
+		$dummy_query = new WP_Query();  // The query isn't run if we don't pass any query vars.
+		$dummy_query->parse_query( $sql_query );
 
-		// this is the actual manipulation; do whatever you need here
+		// This is where we do the actual manipulation.
 		if ( $dummy_query->is_home() ) {
 			$this->load_blog_ids();
-			$query = $this->parse_query( $query );
+			$sql_query = $this->parse_query( $sql_query );
 		}
 
-		return $query;
+		return $sql_query;
 	}
 
+	/**
+	 * Add hooks once the main query has been identified.
+	 *
+	 * @param WP_Query $query WP_Query (unused).
+	 */
 	public function loop_start( $query ) {
 		add_action( 'the_post', array( $this, 'the_post' ) );
 		add_action( 'loop_end', array( $this, 'loop_end' ) );
@@ -103,36 +138,54 @@ class NetworkAggregate {
 		return $wp_rewrite->get_extra_permastruct( $term->taxonomy );
 	}
 
+	/**
+	 * Switch to the correct blog ID before rendering each post.
+	 *
+	 * @param WP_Post $post Post currently being operated on in "The Loop".
+	 */
 	public function the_post( $post ) {
-		restore_current_blog(); //reset to center so we remember for loop_end
+		restore_current_blog(); // Reset to center so we remember for loop_end.
 		switch_to_blog( $post->blog_id );
 		$this->current_blog = $post->blog_id;
 	}
 
+	/**
+	 * Reset to original blog ID after "The Loop".
+	 *
+	 * @param WP_Query $query WP_Query (unused).
+	 */
 	public function loop_end( $query ) {
 		restore_current_blog();
 	}
 
+	/**
+	 * Parse the main query from "The Loop".
+	 *
+	 * @param WP_Query $query Main WP_Query for content.
+	 * @return WP_Query
+	 */
 	private function parse_query( $query ) {
-		if( preg_match( '/(SELECT SQL_CALC_FOUND_ROWS)(.*?)(ORDER.*?)$/', $query, $matches ) ) {
+		if ( preg_match( '/(SELECT SQL_CALC_FOUND_ROWS)(.*?)(ORDER.*?)$/', $query, $matches ) ) {
 
 			$post_table = $this->db->posts;
-			$new_query = array();
-			$new_query[BLOG_ID_CURRENT_SITE] = $matches[1] . ' ' . BLOG_ID_CURRENT_SITE . ' as blog_id, ' . $matches[2];
-			$prefix_len = strlen( $this->db->prefix );
+			$new_query  = array();
+
+			$new_query[ BLOG_ID_CURRENT_SITE ] = $matches[1] . ' ' . BLOG_ID_CURRENT_SITE . ' as blog_id, ' . $matches[2];
+
+			$prefix_len   = strlen( $this->db->prefix );
 			$posts_suffix = substr( $post_table, $prefix_len );
-			$order = str_replace( $post_table . '.', '', $matches[3] );
+			$order        = str_replace( $post_table . '.', '', $matches[3] );
 
 			foreach ( $this->blog_ids as $blog_id ) {
-				if ( $blog_id != BLOG_ID_CURRENT_SITE ) {
-					$blog_post_table = $this->db->prefix . $blog_id . '_' . $posts_suffix;
-					$new_query[$blog_id] = "SELECT {$blog_id} as blog_id, " . str_replace( $post_table, $blog_post_table, $matches[2] );
+				if ( BLOG_ID_CURRENT_SITE != $blog_id ) {
+					$blog_post_table       = $this->db->prefix . $blog_id . '_' . $posts_suffix;
+					$new_query[ $blog_id ] = "SELECT {$blog_id} as blog_id, " . str_replace( $post_table, $blog_post_table, $matches[2] );
 				}
 			}
 			// Hook it up!
 			add_action( 'loop_start', array( $this, 'loop_start' ) );
-			$new_query = implode(' UNION ', $new_query) . $order;
-			//file_put_contents('/tmp/request.txt', print_r($new_query, true));
+			$new_query = implode( ' UNION ', $new_query ) . $order;
+			// file_put_contents('/tmp/request.txt', print_r($new_query, true));
 			return $new_query;
 		}
 		return $query;
